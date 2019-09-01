@@ -1,0 +1,222 @@
+# Import all modules
+import pandas as pd
+import numpy as np 
+from bs4 import BeautifulSoup
+import requests
+import re
+import time
+from lxml.html import fromstring
+import requests
+from itertools import cycle
+import traceback
+import random
+from geopy.geocoders import Nominatim
+from geopy.geocoders import GoogleV3
+from bokeh.plotting import figure, show, output_notebook
+from bokeh.models import ColumnDataSource
+from bokeh.tile_providers import CARTODBPOSITRON
+import math
+import utm
+from bokeh.plotting import gmap
+from ast import literal_eval
+from bokeh.io import output_file, show
+from bokeh.models import ColumnDataSource, GMapOptions
+
+
+#Initial access request to zillow
+req_headers = {
+    'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+    'accept-encoding': 'gzip, deflate, br',
+    'accept-language': 'en-US,en;q=0.8',
+    'upgrade-insecure-requests': '1',
+    'user-agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.119 Safari/537.36'
+}
+
+    
+#Lists of urls
+#url = 'https://www.zillow.com/homes/for_sale/Chicago-IL/17426_rid/globalrelevanceex_sort/42.05796,-87.362595,41.609281,-88.100739_rect/10_zm/'
+url = 'https://www.zillow.com/homes/for_sale/'
+
+#Chicago neighborhoods
+neighborhoods = ['Rogers Park','West Ridge','Uptown','Lincoln Square','Edison Park','Norwood Park','Jefferson Park','Forest Glen','North Park','Albany Park'\
+,'O’Hare','Edgewater','North Center','Lakeview','Lincoln Park','Avondale','Logan Square','Portage Park','Irving Park','Dunning','Montclare'\
+,'Belmont Cragin','Hermosa','Near North Side','Loop','Near South Side','Humboldt Park','West Town','Austin','West Garfield Park','East Garfield Park'\
+,'Near West Side','North Lawndale','South Lawndale','Lower West Side','Garfield Ridge','Archer Heights','Brighton Park','McKinley Park','New City'\
+,'West Elsdon','Gage Park','Clearing','West Lawn','Chicago Lawn','West Englewood','Englewood','Armour Square','Douglas','Oakland','Fuller Park'\
+,'Grand Boulevard','Kenwood','Washington Park','Hyde Park','Woodlawn','South Shore','Bridgeport','Greater Grand Crossing','Ashburn','Auburn Gresham'\
+,'Beverly','Washington Heights','Mount Greenwood','Morgan Park','Chatham','Avalon Park','South Chicago','Burnside','Calumet Heights','Roseland'\
+,'Pullman','South Deering','East Side','West Pullman','Riverdale','Hegewisch']
+
+
+neighborhoods = ['Pilsen', 'Little Village','Bridgeport', 'Lawndale', 'Back of the Yards', 'Archer Heights', ]
+neighborhoods1 = [x.replace(" ","-") for x in neighborhoods]
+
+#Page Numbres
+pages = []
+for x in neighborhoods1:
+    for i in range(8,11):
+        pages.append(url+x+'-Chicago-IL/'+str(i)+'_p/')
+pages
+
+
+
+#If you are copy pasting proxy ips, put in the list below
+proxies = ['118.97.247.129:23500','194.29.60.48:45416','95.80.128.208:8080','182.253.117.114:46720','84.21.145.10:53281','36.37.134.3:8080','112.14.47.6:52024','1.54.133.254:8080','213.109.234.4:8080','1.54.133.249:8080','1.54.133.243:8080','203.176.142.98:8080','168.228.51.238:8080']
+
+
+df1 = []
+for page in pages:                          
+    with requests.Session() as s:
+        url = page
+        s.proxies = proxies[random.randint(1,12)]
+        r = s.get(url,headers=req_headers)
+    soup = BeautifulSoup(r.content, 'lxml')
+    results = soup.find_all('div',  attrs={"class":"zsg-photo-card-content zsg-aspect-ratio-content"})
+
+    x =  {} 
+    for i in results:   
+        
+        #Taking out houses that are going to be foreclosed 
+        if (len(re.findall('Foreclosure',str(i)))>0) or (len(re.findall('Foreclosed',str(i)))>0) or (len(re.findall('foreclosure',str(i)))>0) or (len(re.findall('class="zsg-icon-for-sale"></span>Auction</span>',str(i)))>0) or len(re.findall("<span class=\"zsg-photo-card-price\"\S+", str(i)))==0:
+            pass
+        else:
+            #Price 
+            price =  re.findall("<span class=\"zsg-photo-card-price\"\S+", str(i))[0]   
+            price = re.sub(r"\W", "", price) 
+            price = re.findall('\d+',price)[0]
+
+            #House type            
+            try:
+                building = re.findall("class=\"zsg-icon-for-sale\"></span>\S+\s+\S+\s+\S+\s+", str(i))[0]    
+                if len(re.findall('House',building))>0:
+                    Building = 'House'
+                elif len(re.findall('Condo',building))>0:
+                    Building = 'Condo'
+                else:
+                    Building = 'NA'
+            except:
+                Building = 'NA'
+            str(i)
+            #General Info
+            info = re.findall("zsg-photo-card-info.{1,200}", str(i))[0]
+               
+            #Beds
+            try:
+                beds = re.findall("(\d+) bd",info)[0]
+            except:
+                beds = 'Studio'
+                
+            #Bathrooms
+            try:
+                bathrooms = re.findall("(\d+) ba",info)[0]
+            except:
+                beds = 'NA'
+            
+            #SquareFoot
+            try:
+                sqrft = re.findall("(\d+\,\d+) sqft",info)[0]
+            except:
+                try: 
+                    sqrft = re.findall("(\d+) sqft",info)[0]
+                except:
+                    sqrft = 0
+                
+            #Address
+            try:
+                address = re.findall("<span class=\"zsg-photo-card-address\"\W+\w+\W+\w+\W+\w+\W+\w+\W+\w+\W+\w+\W+\w+\W+\w+\W+\w+\W+\w+\W+\w+\W+\w+\W+\w+\W+\w", str(i))[0]
+            except:
+                address = re.findall("<span class=\"zsg-photo-card-address\"\W+\w+\W+\w+\W+\w+\W+\w+\W+\w+\W+\w+", str(i))[0]
+            address = re.sub('<span class=\"zsg-photo-card-address\">',"",address)
+            address = re.split('<',address)[0]
+            #address = re.findall("(.*?)</", address)[0]
+            
+            
+            #Find href to eventually ping zillow again to find HOA fees
+            try:
+                href = 'www.zillow.com' + re.findall("href=\"/homedetails.+",str(i))[0].split('">')[0][6:]
+            except:
+                href = None
+            
+            x[i] = {'Address': address, 'Building': Building, 'Price': price, 'Beds': beds,'Bathrooms': bathrooms,'Sqrft': sqrft, 'href': href} 
+            time.sleep(1)
+    df = pd.DataFrame.from_dict(x, orient = 'index').reset_index(drop = True) 
+    df1.append(df)            
+df2 = pd.concat(df1,axis=0).reset_index(drop = True)
+df2 = df2.drop_duplicates()
+df4 = df2[(df2.Sqrft!=0) & (df2.Building != 'NA') & (df2.Address != '(undisclosed Address), Chicago, IL') ].reset_index()
+
+df4.drop_duplicates().shape
+
+df4['HOA'] = 0
+
+len(df4.loc[0,'href'])
+
+
+df4 = pd.read_csv(r'C:\Users\u353822\Documents\GitHub\University-of-Chicago1\University of Chicago\Senior Capstone\Odd Zillow Housing Data Set Cleaned V3.csv')
+df4.columns
+# Find HOA Fee
+
+
+for x in range(df4.shape[0]):
+    with requests.Session() as s:
+        for i in range(1,3):
+            url = 'http://'+df4.loc[x,'href'][i]
+            s.proxies = proxies[random.randint(6,12)]
+            r = s.get(url,headers=req_headers)
+        soup = BeautifulSoup(r.content, 'lxml')
+        results = soup.find_all('span',  attrs={"class":"ds-body ds-home-fact-value"})
+        try:
+            results2 = [z for z in results if len(re.findall('/month',str(z))) > 0]
+            df4.loc[x,'HOA'] = int(str(results2).split('$')[1].split('/month')[0])
+        except:
+            df4.loc[x,'HOA'] = 0
+
+
+
+set(x)
+
+df4['Address2']=df4.Address
+
+
+# Clean addresses to find Longitude and Latitude
+for x in range(df4.shape[0]):
+    if len(re.split("APT",df4.loc[x,'Address'])) > 1:
+        df4.loc[x,'Address2'] = re.split("APT",df4.loc[x,'Address'])[0]+'Chicago IL'
+    elif len(re.split("#",df4.loc[x,'Address'])) > 1:
+        df4.loc[x,'Address2'] = re.split("#",df4.loc[x,'Address'])[0]+'Chicago IL'
+    elif len(re.split("UNIT",df4.loc[x,'Address'])) > 1:
+        df4.loc[x,'Address2'] = re.split("UNIT",df4.loc[x,'Address'])[0]+'Chicago IL'
+    else: 
+        df4.loc[x,'Address2'] = df4.loc[x,'Address']
+df4 = df4.rename(index=str, columns={"Address2": "input_string"})
+
+
+
+
+# Find Longiutde and Latitude with cleaned addresses
+geolocator = GoogleV3(api_key="AIzaSyCa6lvqJKffPjaSH5xLsBYbEhrlhMRu-Sc")
+
+for x in range(df4.shape[0]):
+    location = geolocator.geocode(df4.loc[x,'input_string'], timeout=10)
+    df4.loc[x,'longitude'] = location.longitude
+    df4.loc[x,'latitude'] = location.latitude
+
+
+
+
+df4.to_csv(r'C:\Users\u353822\Documents\GitHub\University-of-Chicago1\University of Chicago\Senior Capstone\Odd Neighborhoods Cleaned #2.csv', sep=',', index=False)
+
+
+#Create map of chicago to see distribution of houses
+df = pd.read_csv(r'C:\Users\u353822\Documents\GitHub\University-of-Chicago1\University of Chicago\Senior Capstone\Zillow Housing Data Set Cleaned V3.csv')
+df['lat_lon'] = df.apply(lambda x: utm.from_latlon( x.latitude, x.longitude),axis=1)
+
+df.longitude
+source = ColumnDataSource(data=dict(longitude=df.longitude, latitude=df.latitude))
+
+
+
+
+
+
+
