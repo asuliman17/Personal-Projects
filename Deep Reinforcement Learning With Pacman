@@ -30,7 +30,7 @@ from collections import deque
 
 env = PacmanGame(**game_params)
 
-
+# Create the neural network for both our online and target network.
 def create_dqn_model(input_shape, nb_actions, dense_layers, dense_units):
     model = Sequential()
     model.add(InputLayer(input_shape=input_shape))
@@ -40,16 +40,19 @@ def create_dqn_model(input_shape, nb_actions, dense_layers, dense_units):
     return model
     
 obs = env.reset()
+
+# Create the hyper-parameteres for the neural network
 input_shape = (34,)# obs.shape
 nb_actions = 9  # 9
 dense_layers = 5
 dense_units = 256
 
+# Create the online network
 online_network = create_dqn_model(input_shape, nb_actions, dense_layers, dense_units)
 online_network.summary()
 
 
-
+# Create teh strategy teh onlien network will use to determine it's next decision. 
 def strategy(q_values, epsilon, n_outputs, possible_actions=env.player_possible_actions()):
     if random.random() < epsilon:
         return random.choice(possible_actions)  # random action
@@ -57,16 +60,18 @@ def strategy(q_values, epsilon, n_outputs, possible_actions=env.player_possible_
         #print(possible_actions)
         #possible_actions = [i-1 for i in possible_actions]
         return  np.argmax([q_values[i] for i in possible_actions])          # q-optimal action
-    
+
+# Create a list which will be used as the online netowrk's "memory"
 replay_memory_maxlen = 1000000
 replay_memory = deque([], maxlen=replay_memory_maxlen)
 
+# Create the target network
 target_network = clone_model(online_network)
 target_network.set_weights(online_network.get_weights())
 
 
 
-
+# Create the hyperparameters which will be used in training. 
 name = 'MsPacman_DQN'  # used in naming files (weights, logs, etc)
 n_steps = 7000000        # total number of training steps (= n_epochs)
 warmup = 5000       # start training after warmup iterations
@@ -102,7 +107,7 @@ csv_logger = CSVLogger(os.path.join(name, 'log.csv'), append=True, separator=';'
 tensorboard = TensorBoard(log_dir=os.path.join(name, 'tensorboard'), write_graph=False, write_images=False)
 
 
-
+# Create a function which will return the state of the environment after the online network has decided upon an action.
 def get_state(obs):
     v = []
     x,y = obs['player']
@@ -199,62 +204,5 @@ while step < n_steps:
             online_network.save_weights(os.path.join(weights_folder, 'weights_{}.h5f'.format(step)))
             gc.collect()  # also clean the garbage
 
-#Strategy1
-def test_dqn(obs=obs, eps=.05, nb_actions = env.player_possible_actions()):
-    q_values = online_network.predict(np.array([get_state(obs)]))[0]
-    action = strategy(q_values, eps, nb_actions)
-    return action 
     
 online_network.save_weights(os.path.join(weights_folder, 'weights_last.h5f'))    
-
-def preprocess(start_state):
-    # make tuples from lists
-    start_state['player'] = tuple(start_state['player'])
-    start_state['monsters'] = [tuple(m) for m in start_state['monsters']]
-    start_state['diamonds'] = [tuple(d) for d in start_state['diamonds']]
-    start_state['walls'] = [tuple(w) for w in start_state['walls']]
-
-#def test(strategy, log_file='test_pacman_log.json'):
-def test(strategy, log_file='test_pacman_log.json'):
-    with open('test_params.json', 'r') as file:
-        read_params = json.load(file)
-
-    game_params = read_params['params']
-    test_start_states = read_params['states']
-    total_history = []
-    total_scores = []
-
-    env = PacmanGame(**game_params)
-    for start_state in test_start_states:
-        preprocess(start_state)
-        episode_history = []
-        env.reset()
-        env.player = start_state['player']
-        env.monsters = start_state['monsters']
-        env.diamonds = start_state['diamonds']
-        env.walls = start_state['walls']
-        assert len(env.monsters) == env.nmonsters and len(env.diamonds) == env.ndiamonds and len(env.walls) == env.nwalls
-
-        obs = env.get_obs()
-        episode_history.append(obs)
-        while not obs['end_game']:
-            action = strategy(obs)  
-            obs = env.make_action(action)
-            episode_history.append(obs)
-        total_history.append(episode_history)
-        total_scores.append(obs['total_score'])
-    mean_score = np.mean(total_scores)
-    median_score = np.median(total_scores)
-    with open(log_file, 'w') as file:
-        json.dump(total_history, file)
-    print("Your average score is {}, median is {}, saved log to '{}'. "
-          "Do not forget to upload it for submission!".format(mean_score, median_score, log_file))
-    return median_score
-test(test_dqn)
-
-# Dump all scores to txt-file
-with open(os.path.join(name, 'episode_scores.txt'), 'w') as file:
-    for item in episode_scores:
-        file.write("{}\n".format(item))
-
-print(episode_scores)
