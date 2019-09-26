@@ -104,7 +104,6 @@ copy_steps = 5000    # period (in training steps) between updating target_networ
 gamma = 0.95           # discount rate
 skip_start = 90 # skip the start of every game (it's just freezing time before game starts)
 batch_size = 32        # size of minibaatch athat is taken randomly from replay memory every training step
-double_dqn = False     # whether to use Double-DQN approach or simple DQN (see above)
 
 # eps-greedy parameters: we slowly decrease epsilon from eps_max to eps_min in eps_decay_steps
 eps_max = 1.0
@@ -210,14 +209,9 @@ while step < n_steps:
         replay_done = np.array([x[4] for x in minibatch], dtype=int)
         
         
-        if double_dqn == False:
-            # DQN
-            target_for_action = replay_rewards + (1-replay_done) * gamma * \
-                                    np.amax(target_network.predict(replay_next_state), axis=1)
-        else:
-            # Double DQN
-            best_actions = np.argmax(online_network.predict(replay_next_state), axis=1)
-            target_for_action = replay_rewards + (1-replay_done) * gamma * \
+
+        best_actions = np.argmax(online_network.predict(replay_next_state), axis=1)
+        target_for_action = replay_rewards + (1-replay_done) * gamma * \
                                     target_network.predict(replay_next_state)[np.arange(batch_size), best_actions]
        
         target = online_network.predict(replay_state)# targets coincide with predictions ...
